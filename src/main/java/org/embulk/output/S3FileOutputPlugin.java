@@ -59,6 +59,10 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
         @Config("tmp_path_prefix")
         @ConfigDefault("\"embulk-output-s3-\"")
         public String getTempPathPrefix();
+
+        @Config("file_buffer_limit_size")
+        @ConfigDefault("0")
+        public Integer getFileBufferLimitSize();
     }
 
     public static class S3FileOutput implements FileOutput,
@@ -70,6 +74,7 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
         private final String sequenceFormat;
         private final String fileNameExtension;
         private final String tempPathPrefix;
+        private final int fileBufferLimitSize;
 
         private int taskIndex;
         private int fileIndex;
@@ -112,10 +117,20 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
             this.sequenceFormat = task.getSequenceFormat();
             this.fileNameExtension = task.getFileNameExtension();
             this.tempPathPrefix = task.getTempPathPrefix();
+            this.fileBufferLimitSize = task.getFileBufferLimitSize();
         }
 
         private static Path newTempFile(String prefix) throws IOException {
             return Files.createTempFile(prefix, null);
+        }
+
+        private long getTempFileSize()
+                throws IOException
+        {
+            if (tempFilePath == null) {
+                return 0;
+            }
+            return Files.size(tempFilePath);
         }
 
         private void deleteTempFile() {
@@ -187,6 +202,9 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
 
             try {
                 current.write(buffer.array(), buffer.offset(), buffer.limit());
+                if (fileBufferLimitSize > 0 && fileBufferLimitSize < getTempFileSize()) {
+                    nextFile();
+                }
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             } finally {
