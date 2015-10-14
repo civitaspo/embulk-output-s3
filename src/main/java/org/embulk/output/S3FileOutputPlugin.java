@@ -60,9 +60,12 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
         @ConfigDefault("\"embulk-output-s3-\"")
         public String getTempPathPrefix();
 
-        @Config("file_buffer_limit_size")
-        @ConfigDefault("0")
-        public Integer getFileBufferLimitSize();
+        @Config("file_buffer_chunk_limit")
+        @ConfigDefault("0") // default: 0 means no limit.
+        public long getTotalFileBufferChunkLimit();
+
+        public long getFileBufferChunkLimit();
+        public long setFileBufferChunkLimit(long _byte);
     }
 
     public static class S3FileOutput implements FileOutput,
@@ -74,7 +77,7 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
         private final String sequenceFormat;
         private final String fileNameExtension;
         private final String tempPathPrefix;
-        private final int fileBufferLimitSize;
+        private final long fileBufferChunkLimit;
 
         private int taskIndex;
         private int fileIndex;
@@ -117,7 +120,7 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
             this.sequenceFormat = task.getSequenceFormat();
             this.fileNameExtension = task.getFileNameExtension();
             this.tempPathPrefix = task.getTempPathPrefix();
-            this.fileBufferLimitSize = task.getFileBufferLimitSize();
+            this.fileBufferChunkLimit = task.getFileBufferChunkLimit();
         }
 
         private static Path newTempFile(String prefix) throws IOException {
@@ -202,7 +205,7 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
 
             try {
                 current.write(buffer.array(), buffer.offset(), buffer.limit());
-                if (fileBufferLimitSize > 0 && fileBufferLimitSize < getTempFileSize()) {
+                if (fileBufferChunkLimit > 0 && fileBufferChunkLimit < getTempFileSize()) {
                     nextFile();
                 }
             } catch (IOException ex) {
@@ -252,6 +255,9 @@ public class S3FileOutputPlugin implements FileOutputPlugin {
         PluginTask task = config.loadConfig(PluginTask.class);
 
         validateSequenceFormat(task);
+
+        // setFileBufferChunkLimit
+        task.setFileBufferChunkLimit(task.getTotalFileBufferChunkLimit() / taskCount);
 
         return resume(task.dump(), taskCount, control);
     }
